@@ -9,6 +9,7 @@
       :default-expanded-keys="expandeKey"
       draggable
       :allow-drop="allowDrop"
+      @node-drop="handleDrop"
     >
       <span class="custom-tree-node" slot-scope="{ node, data }">
         <span>{{ node.label }}</span>
@@ -72,6 +73,7 @@ export default {
   props: {},
   data () {
     return {
+      updateNodes: [],
       maxLevel: 0,
       title: '',
       dialogType: '',
@@ -94,6 +96,69 @@ export default {
   watch: {},
   // 方法集合
   methods: {
+    handleDrop (draggingNode, dropNode, dropType, ev) {
+      console.log('tree drop: ', dropNode.label, dropType)
+      // 获取当前节点最新的父节点的id
+      let pCid = 0
+      // 获取当前节点的兄弟节点 或者其子节点
+      let siblings = []
+      if (dropType === 'before' || dropType === 'after') {
+        pCid = dropNode.parent.data.catId === undefined ? 0 : dropNode.parent.data.catId
+        siblings = dropNode.parent.childNodes
+      } else {
+        pCid = dropNode.data.catId
+        siblings = dropNode.childNodes
+      }
+
+      // 优化点：当前拖拽节点的开始更新的索引
+      let startUpdateIndex = -1
+      for (let i = 0; i < siblings.length; i++) {
+        // 如果遍历的是当前正在拖拽的节点
+        if (siblings[i].data.catId === draggingNode.data.catId) {
+          let catLevel = draggingNode.level
+          // 判断当前节点的层级是否发生变化
+          if (siblings[i].level !== draggingNode.level) {
+            catLevel = siblings[i].level
+            // 修改当前节点子节点的层级
+            this.updateChildNodeLevel(siblings[i].childNodes)
+          }
+          this.updateNodes.push({ catId: siblings[i].data.catId, sort: i, parentCid: pCid, catLevel: catLevel })
+          startUpdateIndex = i
+        } else if (startUpdateIndex >= 0) {
+          this.updateNodes.push({ catId: siblings[i].data.catId, sort: i })
+        }
+      }
+
+      // 当前拖拽节点的最新层级
+      console.log('updateNodes', this.updateNodes)
+      this.$http({
+        url: this.$http.adornUrl('/product/category/update/sort'),
+        method: 'post',
+        data: this.$http.adornData(this.updateNodes, false)
+      }).then(({ data }) => {
+        this.$message({
+          message: '菜单顺序修改成功',
+          type: 'success'
+        })
+        // 刷新出新的菜单
+        this.getMenus()
+        // 设置需要默认展开的菜单
+        this.expandeKey = [pCid]
+        this.updateNodes = []
+        this.maxLevel = 0
+      })
+    },
+
+    // 优化点：入参是子节点数组
+    updateChildNodeLevel (childNodes) {
+      if (childNodes.length > 0) {
+        for (let i = 0; i < childNodes.length; i++) {
+          this.updateNodes.push({ catId: childNodes[i].data.catId, catLevel: childNodes[i].level })
+          this.updateChildNodeLevel(childNodes[i].childNodes)
+        }
+      }
+    },
+
     allowDrop (draggingNode, dropNode, type) {
       // 被拖动的当前节点以及所在的父节点总层数不能大于3
 
@@ -115,7 +180,7 @@ export default {
 
     // 计算当前正在被拖拽的节点的最大层级
     calculateDraggingNodeMaxLevel (node) {
-      // 一定要加上这个，否则没有子节点的node进入不了下面的for循环，maxLevel会一直是初始值0
+      // 优化点：一定要加上这个，否则没有子节点的node进入不了下面的for循环，maxLevel会一直是初始值0
       this.maxLevel = node.catLevel
       if (node.children != null && node.children.length > 0) {
         for (let i = 0; i < node.children.length; i++) {
