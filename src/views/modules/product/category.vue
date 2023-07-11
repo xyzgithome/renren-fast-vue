@@ -1,5 +1,12 @@
 <template>
   <div>
+    <el-switch
+      v-model="draggable"
+      active-text="开启拖拽"
+      inactive-text="关闭拖拽"
+    >
+    </el-switch>
+    <el-button @click="batchDelete" type="danger">批量删除</el-button>
     <el-tree
       :data="menus"
       :props="defaultProps"
@@ -7,9 +14,10 @@
       show-checkbox
       node-key="catId"
       :default-expanded-keys="expandeKey"
-      draggable
+      :draggable="draggable"
       :allow-drop="allowDrop"
       @node-drop="handleDrop"
+      ref="menuTree"
     >
       <span class="custom-tree-node" slot-scope="{ node, data }">
         <span>{{ node.label }}</span>
@@ -73,6 +81,7 @@ export default {
   props: {},
   data () {
     return {
+      draggable: false,
       updateNodes: [],
       maxLevel: 0,
       title: '',
@@ -272,8 +281,38 @@ export default {
       this.category.showStatus = 1
     },
 
+    batchDelete () {
+      let catIds = []
+      let catNames = []
+      let checkedNodes = this.$refs.menuTree.getCheckedNodes()
+
+      for (let i = 0; i < checkedNodes.length; i++) {
+        catIds.push(checkedNodes[i].catId)
+        catNames.push(checkedNodes[i].name)
+      }
+
+      this.$confirm(`是否删除【${catNames}】菜单?`, '提示', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }).then(() => {
+        this.$http({
+          url: this.$http.adornUrl('/product/category/delete'),
+          method: 'post',
+          data: this.$http.adornData(catIds, false)
+        }).then(({ data }) => {
+          this.$message({
+            message: '菜单批量删除成功',
+            type: 'success'
+          })
+          // 刷新出新的菜单
+          this.getMenus()
+        })
+      }).catch(() => { })
+    },
+
     remove (node, data) {
-      var ids = [data.catId]
+      let ids = [data.catId]
       this.$confirm(`是否删除【${data.name}】菜单?`, '提示', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
